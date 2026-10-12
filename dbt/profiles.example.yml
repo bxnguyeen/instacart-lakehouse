@@ -1,0 +1,13 @@
+instacart_lakehouse:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: none
+      user: dbt
+      host: localhost
+      port: 8081
+      http_scheme: http
+      database: iceberg
+      schema: silver
+      threads: 2

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local datasets
+data/
+
+# Runtime logs
+logs/
+dbt/logs/
+
+# Generated dbt files
+dbt/target/
+dbt/dbt_packages/
+dbt/.user.yml
+
+# Local connection profiles
+dbt/profiles.yml
+infra/dbt/profiles.yml
+
+# macOS
+.DS_Store
+
+# Local service configuration
+infra/trino/catalog/iceberg.properties
+infra/airflow/config/airflow.cfg

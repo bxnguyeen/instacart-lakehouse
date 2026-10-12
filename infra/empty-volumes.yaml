@@ -1,0 +1,6 @@
+# Only storage names change. Existing volumes are preserved.
+volumes:
+  minio_data:
+    name: instacart-emptytest-minio-v2
+  nessie_data:
+    name: instacart-emptytest-nessie-v2

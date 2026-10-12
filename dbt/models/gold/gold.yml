@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: dim_products
+    columns:
+      - name: product_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: _catalog_version
+        data_tests:
+          - not_null
+
+  - name: fct_order_items_incremental
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+
+      - name: product_id
+        data_tests:
+          - not_null
+
+  - name: fct_orders_incremental
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - unique

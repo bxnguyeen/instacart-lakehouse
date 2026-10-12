@@ -1,0 +1,19 @@
+FROM python:3.13-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "dbt-core==1.12.5" \
+    "dbt-trino==1.10.6"
+
+WORKDIR /opt/dbt
+
+COPY dbt/dbt_project.yml ./
+COPY dbt/models/ ./models/
+COPY dbt/macros/ ./macros/
+COPY dbt/tests/ ./tests/
+COPY infra/dbt/profiles.yml ./profiles.yml
+
+ENTRYPOINT ["dbt"]
