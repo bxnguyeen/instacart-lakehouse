@@ -10,6 +10,18 @@ from catalog_state import read_catalog_state, write_catalog_state
 from airflow.providers.standard.operators.empty import EmptyOperator
 
 
+class StringCommandDockerOperator(DockerOperator):
+    def execute(self, context):
+        if isinstance(self.command, list):
+            self.command = [
+                json.dumps(value)
+                if isinstance(value, (dict, list, bool))
+                else str(value)
+                for value in self.command
+            ]
+
+        return super().execute(context)
+
 @dag(
     dag_id="instacart_gold",
     start_date=pendulum.datetime(
@@ -150,7 +162,7 @@ def instacart_gold():
     })
 
     def catalog_validation(task_id, include_gold):
-        return DockerOperator(
+        return StringCommandDockerOperator(
             task_id=task_id,
             command=[
                 "run-operation", "validate_gold_catalog",
@@ -177,7 +189,7 @@ def instacart_gold():
     )
 
     def dbt_task(task_id, action, selections, bucket=0):
-        return DockerOperator(
+        return StringCommandDockerOperator(
             task_id=task_id,
             command=[
                 action,

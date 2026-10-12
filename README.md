@@ -110,7 +110,29 @@ The pipeline passes the catalog version to downstream DAGs.
 - Legacy snapshot DAGs and models were removed.
 - dbt parsing passed after cleanup.
 - dbt and Spark images were rebuilt after cleanup.
-- A complete pipeline run after cleanup remains to be verified.
+- After cleanup, batches 001, 002, and 003 completed successfully through
+  Bronze, Silver, and Gold from a fresh clone with new storage and
+  Airflow database volumes on the same macOS machine.
+- Setup on a separate machine has not yet been verified.
+
+## Fresh-Clone Validation
+
+The pipeline was tested from a fresh GitHub clone on the same macOS
+machine, using newly created MinIO, Nessie, and Airflow database volumes.
+
+Batches 001, 002, and 003 completed successfully through Bronze, Silver,
+and Gold. Catalog reuse was verified for subsequent batches.
+
+| Batch | Bronze | Silver | Gold | Sum of DAG durations |
+|---|---:|---:|---:|---:|
+| 001 | 1:33 | 3:58 | 5:29 | 11:00 |
+| 002 | 1:01 | 2:38 | 3:34 | 7:13 |
+| 003 | 1:02 | 2:32 | 3:51 | 7:25 |
+
+Validation identified and resolved missing bucket initialization,
+missing forwarding of `run_gold`, and Docker command argument types.
+
+Setup on a separate machine has not yet been verified.
 
 ## Scope
 

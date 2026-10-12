@@ -1,8 +1,10 @@
 # Local Setup
 
-These instructions describe the intended setup from a fresh clone.
-A complete fresh-install run has not yet been verified.
-The existing local pipeline was tested before repository cleanup.
+These instructions describe setup from a fresh clone.
+
+The pipeline was validated after repository cleanup using a fresh clone
+and new MinIO, Nessie, and Airflow database volumes on the same macOS
+machine. Setup on a separate machine has not yet been verified.
 
 ## Requirements
 
@@ -167,8 +169,15 @@ These commands preserve data volumes. Resume with the lakehouse `up -d`
 command followed by the Airflow service `up -d` command from step 4.
 Airflow initialization is not required for every restart.
 
-## Validation status
+## Validation Status
 
-Catalog build and skip paths were verified in the original local environment.
-After cleanup, dbt parsing passed and dbt/Spark images were rebuilt.
-The complete setup above still needs validation in a fresh environment.
+Batches 001, 002, and 003 completed successfully through Bronze,
+Silver, and Gold in the fresh-clone environment.
+
+Catalog build and reuse paths were verified. Fresh-clone testing
+identified and resolved missing bucket initialization, missing
+forwarding of `run_gold`, and Docker command argument types.
+
+Validation used separate test volumes on the same macOS machine.
+Setup on a separate machine has not yet been verified.
+

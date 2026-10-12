@@ -12,6 +12,18 @@ from airflow.providers.standard.operators.empty import EmptyOperator
 import re
 from catalog_state import read_catalog_state, write_catalog_state
 
+class StringCommandDockerOperator(DockerOperator):
+    def execute(self, context):
+        if isinstance(self.command, list):
+            self.command = [
+                json.dumps(value)
+                if isinstance(value, (dict, list, bool))
+                else str(value)
+                for value in self.command
+            ]
+
+        return super().execute(context)
+
 @dag(
     dag_id="instacart_silver",
     start_date=pendulum.datetime(
@@ -168,7 +180,7 @@ def instacart_silver():
         ),
     })
 
-    build_catalog = DockerOperator(
+    build_catalog = StringCommandDockerOperator(
         task_id="build_silver_catalog",
         command=[
             "build",
@@ -188,7 +200,7 @@ def instacart_silver():
     catalog_building = mark_silver_catalog_building(selected_catalog)
     catalog_completed = mark_silver_catalog_completed(selected_catalog)
 
-    validate_existing_catalog = DockerOperator(
+    validate_existing_catalog = StringCommandDockerOperator(
         task_id="validate_existing_silver_catalog",
         command=[
             "run-operation",
@@ -215,7 +227,7 @@ def instacart_silver():
     validate_existing_catalog >> catalog_ready
 
     def dbt_task(task_id, action, model, bucket=0):
-        return DockerOperator(
+        return StringCommandDockerOperator(
             task_id=task_id,
             command=[
                 action,

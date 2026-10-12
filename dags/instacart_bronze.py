@@ -58,12 +58,37 @@ def checksum(path):
             enum=["001", "002", "003"],
         ),
         "run_silver": Param(False, type="boolean"),
+        "run_gold": Param(False, type="boolean"),
         "refresh_catalog": Param(False, type="boolean"),
     },
     render_template_as_native_obj=True,
     tags=["instacart", "incremental", "bronze"],
 )
 def instacart_bronze():
+    @task
+    def ensure_buckets():
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ["MINIO_ENDPOINT"],
+            aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
+            aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
+            region_name="us-east-1",
+            config=Config(s3={"addressing_style": "path"}),
+        )
+
+        for bucket in ["landing", "warehouse"]:
+            try:
+                s3.head_bucket(Bucket=bucket)
+            except ClientError as error:
+                code = error.response["Error"]["Code"]
+                if code not in {"404", "NoSuchBucket", "NotFound"}:
+                    raise
+
+                s3.create_bucket(Bucket=bucket)
+                logging.info("Created bucket: %s", bucket)
+            else:
+                logging.info("Bucket already exists: %s", bucket)
+
     @task
     def inspect_catalog():
         context = get_current_context()
@@ -419,8 +444,11 @@ def instacart_bronze():
             "manifest_key": key,
         }
 
+    buckets_ready = ensure_buckets()
     catalog = inspect_catalog()
     published_catalog = publish_catalog(catalog)
+
+    buckets_ready >> published_catalog
 
     previous_catalog = published_catalog
 
@@ -550,6 +578,7 @@ def instacart_bronze():
                 "{{ ti.xcom_pull("
                 "task_ids='publish_catalog')['refresh_catalog'] }}"
             ),
+            "run_gold": "{{ params.run_gold }}",
         },
         wait_for_completion=False,
         skip_when_already_exists=True,
