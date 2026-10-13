@@ -229,7 +229,7 @@ def instacart_gold():
 
     previous = catalog_ready
 
-    for bucket in range(16):
+    for bucket in range(8):
         merge_items = dbt_task(
             task_id=f"merge_items_bucket_{bucket:02d}",
             action="run",
@@ -249,7 +249,7 @@ def instacart_gold():
     previous >> test_items
     previous = test_items
 
-    for bucket in range(16):
+    for bucket in range(8):
         merge_orders = dbt_task(
             task_id=f"merge_orders_bucket_{bucket:02d}",
             action="run",

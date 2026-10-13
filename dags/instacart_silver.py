@@ -254,7 +254,7 @@ def instacart_silver():
     catalog_ready >> orders
     previous = orders
 
-    for bucket in range(16):
+    for bucket in range(8):
         merge_prior = dbt_task(
             f"merge_prior_bucket_{bucket:02d}",
             "run",

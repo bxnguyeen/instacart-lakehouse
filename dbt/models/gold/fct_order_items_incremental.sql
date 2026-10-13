@@ -5,9 +5,9 @@
 {% if is_incremental() %}
     {% if merge_bucket is not integer
           or merge_bucket < 0
-          or merge_bucket > 15 %}
+          or merge_bucket > 7 %}
         {{ exceptions.raise_compiler_error(
-            "Provide merge_bucket as an integer from 0 to 15"
+            "Provide merge_bucket as an integer from 0 to 7"
         ) }}
     {% endif %}
 
@@ -18,7 +18,7 @@
     {% endif %}
 
     {% set predicates = [
-        "mod(DBT_INTERNAL_DEST.order_id, 16) = " ~ merge_bucket
+        "mod(DBT_INTERNAL_DEST.order_id, 8) = " ~ merge_bucket
     ] %}
 {% endif %}
 
@@ -43,7 +43,7 @@ from {{ ref('stg_order_products_prior_incremental') }}
 
 {% if is_incremental() %}
 where _batch_id = '{{ batch_id }}'
-  and mod(order_id, 16) = {{ merge_bucket }}
+  and mod(order_id, 8) = {{ merge_bucket }}
 {% endif %}
 
 union all 
@@ -59,5 +59,5 @@ from {{ ref('stg_order_products_train_incremental') }}
 
 {% if is_incremental() %}
 where _batch_id = '{{ batch_id }}'
-  and mod(order_id, 16) = {{ merge_bucket }}
+  and mod(order_id, 8) = {{ merge_bucket }}
 {% endif %}

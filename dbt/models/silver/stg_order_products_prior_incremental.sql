@@ -4,14 +4,14 @@
 {% if is_incremental() %}
     {% if merge_bucket is not integer
           or merge_bucket < 0
-          or merge_bucket > 15 %}
+          or merge_bucket > 7 %}
         {{ exceptions.raise_compiler_error(
-            "Provide merge_bucket as an integer from 0 to 15"
+            "Provide merge_bucket as an integer from 0 to 7"
         ) }}
     {% endif %}
 
     {% set predicates = [
-        "mod(DBT_INTERNAL_DEST.order_id, 16) = " ~ merge_bucket
+        "mod(DBT_INTERNAL_DEST.order_id, 8) = " ~ merge_bucket
     ] %}
 {% endif %}
 
@@ -46,5 +46,5 @@ from {{ source('instacart', 'order_products_prior_batches') }}
     {% endif %}
 
 where _batch_id = '{{ batch_id }}'
-  and mod(cast(order_id as integer), 16) = {{ merge_bucket }}
+  and mod(cast(order_id as integer), 8) = {{ merge_bucket }}
 {% endif %}
