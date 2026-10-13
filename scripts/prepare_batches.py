@@ -30,7 +30,7 @@ def split_orders():
         reader = csv.DictReader(source_file)
 
         if not reader.fieldnames or "order_id" not in reader.fieldnames:
-            raise ValueError("orders.csv thiếu cột order_id")
+            raise ValueError("orders.csv does not have column order_id")
 
         writers = {}
 
