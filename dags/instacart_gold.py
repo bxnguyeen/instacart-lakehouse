@@ -188,7 +188,7 @@ def instacart_gold():
         trigger_rule="none_failed_min_one_success",
     )
 
-    def dbt_task(task_id, action, selections, bucket=0):
+    def dbt_task(task_id, action, selections):
         return StringCommandDockerOperator(
             task_id=task_id,
             command=[
@@ -196,11 +196,11 @@ def instacart_gold():
                 "--project-dir", "/opt/dbt",
                 "--profiles-dir", "/opt/dbt",
                 "--select", *selections,
+                "--indirect-selection", "cautious",
                 "--threads", "1",
                 "--vars",
                 json.dumps({
                     "batch_id": batch_template,
-                    "merge_bucket": bucket,
                 }),
             ],
             **common,
@@ -224,50 +224,19 @@ def instacart_gold():
 
     catalog_path >> validate_existing >> catalog_ready
 
-    previous = catalog_ready
-
-    for bucket in range(8):
-        merge_items = dbt_task(
-            task_id=f"merge_items_bucket_{bucket:02d}",
-            action="run",
-            selections=["fct_order_items_incremental"],
-            bucket=bucket,
-        )
-
-        previous >> merge_items
-        previous = merge_items
-
-    test_items = dbt_task(
-        task_id="test_gold_items",
-        action="test",
-        selections=["fct_order_items_row_count"],
-    )
-
-    previous >> test_items
-    previous = test_items
-
-    for bucket in range(8):
-        merge_orders = dbt_task(
-            task_id=f"merge_orders_bucket_{bucket:02d}",
-            action="run",
-            selections=["fct_orders_incremental"],
-            bucket=bucket,
-        )
-
-        previous >> merge_orders
-        previous = merge_orders
-
-    test_orders = dbt_task(
-        task_id="test_gold_orders",
-        action="test",
+    build_gold = dbt_task(
+        task_id="build_gold_transactions",
+        action="build",
         selections=[
+            "fct_order_items_incremental",
+            "fct_orders_incremental",
+            "fct_order_items_row_count",
             "fct_orders_row_count",
             "fct_orders_items_total",
             "fct_orders_metrics",
         ],
     )
-
-    previous >> test_orders
+    catalog_ready >> build_gold
 
 
 instacart_gold()
