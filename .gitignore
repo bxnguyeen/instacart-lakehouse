@@ -31,3 +31,6 @@ infra/dbt/profiles.yml
 # Local service configuration
 infra/trino/catalog/iceberg.properties
 infra/airflow/config/airflow.cfg
+
+infra/generated-test-volumes.yaml
+infra/airflow/generated-test-volumes.yaml

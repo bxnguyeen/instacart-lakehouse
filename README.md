@@ -221,13 +221,15 @@ To use separate test volumes, pass the lakehouse and Airflow override
 files, in that order:
 
 ```bash
+python3 scripts/init_config.py --test-name fresh-test-v3
+
 bash scripts/start_services.sh \
-  infra/layer-test-volumes.yaml \
-  infra/airflow/layer-test-volumes.yaml
+  infra/generated-test-volumes.yaml \
+  infra/airflow/generated-test-volumes.yaml
 
 bash scripts/stop_services.sh \
-  infra/layer-test-volumes.yaml \
-  infra/airflow/layer-test-volumes.yaml
+  infra/generated-test-volumes.yaml \
+  infra/airflow/generated-test-volumes.yaml
 ```
 
 These files must exist locally and define the intended test volumes.
