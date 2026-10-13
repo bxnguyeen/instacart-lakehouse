@@ -227,13 +227,14 @@ def instacart_silver():
     validate_existing_catalog >> catalog_ready
 
     def dbt_task(task_id, action, model, bucket=0):
+        selections = [model] if isinstance(model, str) else model
         return StringCommandDockerOperator(
             task_id=task_id,
             command=[
                 action,
                 "--project-dir", "/opt/dbt",
                 "--profiles-dir", "/opt/dbt",
-                "--select", model,
+                "--select", *selections,
                 "--indirect-selection", "cautious",
                 "--threads", "1",
                 "--vars",
@@ -246,9 +247,12 @@ def instacart_silver():
         )
 
     orders = dbt_task(
-        "build_silver_orders",
+        "build_silver_orders_and_train",
         "build",
-        "stg_orders_incremental",
+        [
+            "stg_orders_incremental",
+            "stg_order_products_train_incremental",
+        ],
     )
 
     catalog_ready >> orders
@@ -265,27 +269,16 @@ def instacart_silver():
         previous >> merge_prior
         previous = merge_prior
 
-    test_prior = dbt_task(
-        "test_silver_prior",
+    final_tests = dbt_task(
+        "test_silver_final",
         "test",
-        "stg_order_products_prior_incremental",
+        [
+            "stg_order_products_prior_incremental",
+            "order_items_sources_overlap",
+        ],
     )
 
-    train = dbt_task(
-        "build_silver_train",
-        "build",
-        "stg_order_products_train_incremental",
-    )
-
-    previous >> test_prior >> train
-
-    overlap = dbt_task(
-        "test_items_sources_overlap",
-        "test",
-        "order_items_sources_overlap",
-    )
-
-    train >> overlap
+    previous >> final_tests
 
     @task.short_circuit
     def should_run_gold():
@@ -323,7 +316,7 @@ def instacart_silver():
         skip_when_already_exists=True,
     )
 
-    overlap >> gold_gate >> trigger_gold
+    final_tests >> gold_gate >> trigger_gold
 
 
 instacart_silver()

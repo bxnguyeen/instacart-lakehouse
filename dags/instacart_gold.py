@@ -207,23 +207,20 @@ def instacart_gold():
         )
 
     build_products = dbt_task(
-        task_id="build_dim_products",
-        action="run",
-        selections=["dim_products"],
-    )
-
-    test_products = dbt_task(
-        task_id="test_dim_products",
-        action="test",
-        selections=["dim_products_row_count"],
+        task_id="build_and_test_dim_products",
+        action="build",
+        selections=[
+            "dim_products",
+            "dim_products_row_count",
+        ],
     )
 
     catalog_building = mark_gold_catalog_building(selected_catalog)
     catalog_completed = mark_gold_catalog_completed(selected_catalog)
 
     catalog_path >> validate_silver >> catalog_building
-    catalog_building >> build_products >> test_products
-    test_products >> validate_built >> catalog_completed >> catalog_ready
+    catalog_building >> build_products >> validate_built
+    validate_built >> catalog_completed >> catalog_ready
 
     catalog_path >> validate_existing >> catalog_ready
 
