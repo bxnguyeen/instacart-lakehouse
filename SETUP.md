@@ -197,9 +197,20 @@ bash scripts/stop_services.sh
 For the included test-volume configuration, pass both override files:
 
 ```bash
-bash scripts/start_services.sh infra/layer-test-volumes.yaml infra/airflow/layer-test-volumes.yaml
-bash scripts/stop_services.sh infra/layer-test-volumes.yaml infra/airflow/layer-test-volumes.yaml
+python3 scripts/init_config.py --test-name presentation-v1
+
+bash scripts/start_services.sh \
+  infra/generated-test-volumes.yaml \
+  infra/airflow/generated-test-volumes.yaml
+
+bash scripts/stop_services.sh \
+  infra/generated-test-volumes.yaml \
+  infra/airflow/generated-test-volumes.yaml
 ```
+
+Choose an unused test name for fresh storage. Existing generated
+override files are preserved; changing `--test-name` does not
+automatically replace them. Stop services after active DAG runs finish.
 
 Check that test volume names are unused before a fresh-storage test.
 Startup does not build images or wait for healthchecks. Verify readiness
