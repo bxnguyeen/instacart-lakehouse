@@ -134,6 +134,27 @@ missing forwarding of `run_gold`, and Docker command argument types.
 
 Setup on a separate machine has not yet been verified.
 
+## Current Merge Configuration
+
+Silver prior items, Gold order items, and Gold orders use 8 merge
+buckets. Bucket tasks run sequentially.
+
+Bucket-specific uniqueness tests use a separate 8-way hash split;
+their grouping is independent of the merge buckets.
+
+## Validation with 8 Merge Buckets
+
+| Batch | Bronze | Silver | Gold | Sum of DAG durations |
+|---|---:|---:|---:|---:|
+| 002 | 1:04 | 1:31 | 2:09 | 4:44 |
+| 001 | 1:26 | 2:36 | 3:03 | 7:05 |
+
+These measurements are reruns in the original local environment.
+They are not directly comparable to the earlier fresh-storage runs.
+
+Both reruns completed successfully through all three layers,
+including the selected data tests.
+
 ## Scope
 
 This project demonstrates local batch ingestion, incremental
