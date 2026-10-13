@@ -181,3 +181,27 @@ forwarding of `run_gold`, and Docker command argument types.
 Validation used separate test volumes on the same macOS machine.
 Setup on a separate machine has not yet been verified.
 
+
+## Service Script Shortcuts
+
+From the repository root, use:
+
+```bash
+bash scripts/check_setup.sh
+bash scripts/build_images.sh
+bash scripts/start_services.sh
+# Wait for active DAG runs to finish before stopping services.
+bash scripts/stop_services.sh
+```
+
+For the included test-volume configuration, pass both override files:
+
+```bash
+bash scripts/start_services.sh infra/layer-test-volumes.yaml infra/airflow/layer-test-volumes.yaml
+bash scripts/stop_services.sh infra/layer-test-volumes.yaml infra/airflow/layer-test-volumes.yaml
+```
+
+Check that test volume names are unused before a fresh-storage test.
+Startup does not build images or wait for healthchecks. Verify readiness
+before triggering DAGs. Environments share container names and ports;
+run only one at a time.

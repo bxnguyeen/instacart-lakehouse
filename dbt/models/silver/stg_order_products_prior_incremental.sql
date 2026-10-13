@@ -1,18 +1,8 @@
-{% set merge_bucket = var('merge_bucket', none) %}
-{% set predicates = [] %}
-
-{% if is_incremental() %}
-    {% if merge_bucket is not integer
-          or merge_bucket < 0
-          or merge_bucket > 7 %}
-        {{ exceptions.raise_compiler_error(
-            "Provide merge_bucket as an integer from 0 to 7"
-        ) }}
-    {% endif %}
-
-    {% set predicates = [
-        "mod(DBT_INTERNAL_DEST.order_id, 8) = " ~ merge_bucket
-    ] %}
+{% set batch_id = var('batch_id', '') %}
+{% if is_incremental() and batch_id not in ['001', '002', '003'] %}
+    {{ exceptions.raise_compiler_error(
+        "Provide batch_id as a string: 001, 002, or 003"
+    ) }}
 {% endif %}
 
 {{ config(
@@ -21,7 +11,6 @@
     unique_key=['order_id', 'product_id'],
     schema='silver',
     views_enabled=false,
-    incremental_predicates=predicates,
     on_schema_change='fail'
 ) }}
 
@@ -46,5 +35,5 @@ from {{ source('instacart', 'order_products_prior_batches') }}
     {% endif %}
 
 where _batch_id = '{{ batch_id }}'
-  and mod(cast(order_id as integer), 8) = {{ merge_bucket }}
+
 {% endif %}

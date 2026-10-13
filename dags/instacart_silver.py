@@ -226,7 +226,7 @@ def instacart_silver():
     catalog_path >> validate_existing_catalog
     validate_existing_catalog >> catalog_ready
 
-    def dbt_task(task_id, action, model, bucket=0):
+    def dbt_task(task_id, action, model):
         selections = [model] if isinstance(model, str) else model
         return StringCommandDockerOperator(
             task_id=task_id,
@@ -240,45 +240,22 @@ def instacart_silver():
                 "--vars",
                 json.dumps({
                     "batch_id": batch_template,
-                    "merge_bucket": bucket,
                 }),
             ],
             **common,
         )
 
-    orders = dbt_task(
-        "build_silver_orders_and_train",
+    build_silver = dbt_task(
+        "build_silver_transactions",
         "build",
         [
             "stg_orders_incremental",
+            "stg_order_products_prior_incremental",
             "stg_order_products_train_incremental",
-        ],
-    )
-
-    catalog_ready >> orders
-    previous = orders
-
-    for bucket in range(8):
-        merge_prior = dbt_task(
-            f"merge_prior_bucket_{bucket:02d}",
-            "run",
-            "stg_order_products_prior_incremental",
-            bucket=bucket,
-        )
-
-        previous >> merge_prior
-        previous = merge_prior
-
-    final_tests = dbt_task(
-        "test_silver_final",
-        "test",
-        [
-            "stg_order_products_prior_incremental",
             "order_items_sources_overlap",
         ],
     )
-
-    previous >> final_tests
+    catalog_ready >> build_silver
 
     @task.short_circuit
     def should_run_gold():
@@ -316,7 +293,7 @@ def instacart_silver():
         skip_when_already_exists=True,
     )
 
-    final_tests >> gold_gate >> trigger_gold
+    build_silver >> gold_gate >> trigger_gold
 
 
 instacart_silver()
