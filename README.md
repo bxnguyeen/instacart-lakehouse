@@ -1,295 +1,140 @@
 # Instacart Lakehouse
 
-A local batch lakehouse built with MinIO, Apache Iceberg, Nessie, Spark, Trino, dbt, and Airflow.
+A local ELT learning project using MinIO, Apache Iceberg, Nessie, Spark,
+Trino, dbt, and Airflow.
 
-This branch, `perf/dbt-layer-build`, experiments with layer-level dbt builds instead of separate merge-bucket tasks.
-
-Instacart is a static dataset. Prepared batches simulate incremental arrivals; they are not real daily data feeds.
+One Airflow DAG, `instacart_pipeline`, organizes work into three stages.
+Each processing task loads or builds one table. Stage-level tests check
+consistency across tables.
 
 ## Architecture
 
 ```text
-Source CSV files
-      ↓
-MinIO landing: CSV files and manifests
-      ↓ Spark
-Bronze Iceberg tables
-      ↓ dbt SQL executed by Trino
-Silver tables
-      ↓ dbt SQL executed by Trino
-Gold tables
+Local CSV files
+  → MinIO landing
+  → Spark → Iceberg tables in 01_raw
+  → dbt / Trino → Iceberg tables in 02_stg
+  → dbt / Trino → Iceberg tables in 03_dwh
 ```
 
-| Component | Responsibility |
-|---|---|
-| MinIO | Stores landing files, Iceberg data, and metadata |
-| Iceberg | Provides table schemas, snapshots, and file management |
-| Nessie | Provides the Iceberg catalog |
-| Spark | Reads source CSV files and writes Bronze tables |
-| Trino | Queries Iceberg tables and executes dbt SQL |
-| dbt | Defines transformations, model dependencies, and data tests |
-| Airflow | Coordinates ingestion and downstream builds, logs, and retries |
+MinIO stores files. Iceberg manages table metadata and snapshots. Nessie
+provides the catalog. Spark ingests CSV files, and Trino executes SQL
+submitted by dbt. Airflow coordinates tasks and records their status.
+DBeaver can query Trino; it does not store the tables.
 
-## Data Preparation
-
-Source files are placed under `data/instacart/`:
+## DAG Structure
 
 ```text
-aisles.csv
-departments.csv
-products.csv
-orders.csv
-order_products__prior.csv
-order_products__train.csv
+raw: six per-table ingestion tasks
+  → stg: six per-table dbt build tasks
+  → test_stg_consistency
+  → dwh: three per-table dbt build tasks
+  → test_dwh_consistency
 ```
 
-`prepare_batches.py` splits transaction data using `order_id % 10`:
+All raw tasks complete before staging begins. All staging tasks and
+stage consistency tests complete before the warehouse stage starts.
+Within DWH, `fct_orders` depends on `fct_order_items`.
 
-- Remainders `0–7`: batch `001`.
-- Remainder `8`: batch `002`.
-- Remainder `9`: batch `003`.
+Task concurrency and dbt threads are currently set to 1. Each table task
+has a separate log and can be cleared and rerun in Airflow. Rerunning an
+upstream table alone does not automatically refresh already completed
+downstream tasks; include affected downstream tasks when needed.
 
-Orders and their items use the same assignment rule.
+## Tables
 
-`validate_batches.py` checks batch assignment, order uniqueness, item-to-order references, and row totals against the source files.
+| Schema | Tables | Write behavior |
+|---|---|---|
+| `01_raw` | aisles, departments, products | Overwrite the full catalog table |
+| `01_raw` | orders, order_products_prior, order_products_train | Overwrite the selected batch partition |
+| `02_stg` | stg_aisles, stg_departments, stg_products | Rebuild catalog models |
+| `02_stg` | stg_orders, stg_order_products_prior, stg_order_products_train | Incremental merge |
+| `03_dwh` | dim_products | Rebuild product dimension |
+| `03_dwh` | fct_order_items, fct_orders | Incremental merge |
 
-These ingestion batches are not machine-learning train/validation/test splits.
+`fct_order_items` has one row per `(order_id, product_id)`.
+`fct_orders` has one row per `order_id`. `dim_products` has one row per product.
 
-## Pipeline
+Raw catalog tables retain source columns. Raw transaction tables add
+`_batch_id`. There are no custom checksum manifests, catalog-version
+markers, or catalog-skip branches. Iceberg manages table snapshots;
+rerun behavior is implemented by partition overwrite and merge logic.
+Snapshots do not independently prevent duplicate business records.
 
-The active DAGs are:
+## Simulated Batches
 
-```text
-instacart_bronze → instacart_silver → instacart_gold
-```
+Instacart is static. `prepare_batches.py` assigns transactions using
+`order_id % 10`: remainders 0–7 to `001`, 8 to `002`, and 9 to `003`.
+Orders and their items follow the same assignment rule. These are simulated
+ingestion batches, not daily feeds or ML dataset splits.
 
-Downstream DAGs are triggered asynchronously. Bronze success alone does not confirm that Silver and Gold completed successfully.
+`validate_batches.py` remains an optional input-preparation check outside
+the DAG. Batch preparation is required before the first run, but not
+before every rerun when the source files are unchanged.
 
-### Bronze
+On initial creation or full refresh, incremental models can read all
+available upstream data. On incremental execution, they filter the
+selected `_batch_id` and merge by the configured business key.
+This design assumes stable batch membership; it does not implement
+propagation of source deletions or movement of records between batches.
 
-The Bronze DAG:
+## Data Quality
 
-- Ensures the `landing` and `warehouse` buckets exist.
-- Inspects source files and calculates checksums.
-- Publishes catalog and batch files with manifests.
-- Runs Spark jobs to load Bronze Iceberg tables.
-- Passes batch and catalog information to Silver.
+Per-table tasks use `dbt build` with cautious indirect test selection.
+Selected single-model tests run with their models. After staging,
+relationship tests and the prior/train overlap test run explicitly.
+Warehouse consistency tests compare row counts, item totals, and metrics.
+Uniqueness checks cover complete tables rather than hash buckets.
 
-Bronze retains source-oriented data and adds ingestion metadata for traceability.
+A failed test does not roll back tables already written. A successful
+DAG means its selected checks passed, not that every possible business
+rule was verified.
 
-### Silver
+## Setup and Operation
 
-Silver standardizes source fields and accumulates transaction data.
-
-After the catalog is ready, one task, `build_silver_transactions`, runs `dbt build` for:
-
-- `stg_orders_incremental`
-- `stg_order_products_prior_incremental`
-- `stg_order_products_train_incremental`
-- Their selected data tests and the order-items overlap test
-
-Transaction merges process the selected batch without merge-bucket filters.
-
-### Gold
-
-Gold organizes data into product dimensions and order facts.
-
-| Model | Row grain |
-|---|---|
-| `dim_products` | One product |
-| `fct_order_items_incremental` | One order–product pair |
-| `fct_orders_incremental` | One order |
-
-After the catalog is ready, one task, `build_gold_transactions`, builds the transaction models and runs their selected tests.
-
-dbt uses model dependencies to build order items before order-level aggregations.
-
-## Catalog Reuse
-
-Catalog data consists of aisles, departments, and products.
-
-Silver and Gold maintain separate state objects in MinIO:
-
-```text
-landing/instacart/state/silver_catalog.json
-landing/instacart/state/gold_catalog.json
-```
-
-Before rebuilding, the corresponding layer records `building`. It records `completed` only after the required build, tests, and validation succeed.
-
-With an unchanged completed catalog version and `refresh_catalog=false`, the pipeline validates existing catalog tables and skips rebuilding.
-
-Transaction processing still runs.
-
-If validation fails on the reuse path, the DAG stops. Inspect the failure before rerunning with `refresh_catalog=true`.
-
-## Execution Strategy
-
-This branch removes the Airflow merge-bucket loops and the corresponding SQL bucket filters and destination predicates.
-
-- Each layer uses one dbt invocation for transaction builds and tests.
-- dbt threads remain set to `1`.
-- Airflow still controls layer execution and catalog handling.
-- Retrying a transaction task reruns its selected dbt build, rather than an individual bucket.
-
-Bucket-specific uniqueness tests retain their independent 8-way hash split. Test grouping does not control how transaction data is merged.
-
-## Repository Structure
-
-```text
-dags/       Airflow DAGs and catalog state helpers
-dbt/        Models, macros, and data tests
-infra/      Docker images and service configuration
-scripts/    Batch preparation and validation
-spark/      Bronze ingestion jobs
-README.md   Project overview
-SETUP.md    Local setup instructions
-```
-
-## Setup
-
-See [SETUP.md](SETUP.md) for configuration, dataset preparation, image builds, service startup, and pipeline execution.
-
-Local configuration files are excluded from Git:
-
-- `infra/airflow/.env`
-- `infra/airflow/config/airflow.cfg`
-- `infra/trino/catalog/iceberg.properties`
-- `infra/dbt/profiles.yml`
-- `dbt/profiles.yml`
-
-Configuration examples are included. Source files and generated batches under `data/` are excluded.
-
-A fresh clone requires local configuration and the source dataset before execution.
-
-## Local Service Scripts
-
-Run commands from the repository root.
-
-### Check Configuration
+See [SETUP.md](SETUP.md) for a fresh environment.
 
 ```bash
+python3 scripts/init_config.py
 bash scripts/check_setup.sh
-```
-
-Checks required configuration files, Docker availability, and Compose
-configuration. It does not verify service readiness or credential matching.
-
-### Build Images
-
-```bash
 bash scripts/build_images.sh
-```
-
-Builds dbt, Spark, MinIO, and Airflow images using Docker's build cache.
-The script stops if a build fails.
-
-Rebuild after changing dependencies, Dockerfiles, or code copied into
-images. DAG-only changes do not require rebuilding.
-
-### Start Services
-
-```bash
 bash scripts/start_services.sh
-```
-
-Starts the lakehouse, initializes Airflow, and starts Airflow services.
-It does not rebuild images or trigger DAGs.
-
-Check readiness before running the pipeline:
-
-```bash
 docker ps --format 'table {{.Names}}\t{{.Status}}'
 ```
 
-Services with healthchecks should report `healthy`.
-
-### Stop Services
-
-Wait for active DAG runs to finish, then run:
+After services are ready, enable `instacart_pipeline` and trigger with
+`batch_id=001`. Continue with `002` after the run succeeds.
 
 ```bash
 bash scripts/stop_services.sh
 ```
 
-Stops services while preserving data volumes. Use `start_services.sh`
-to resume.
+Stop only after active DAG runs finish. Stop preserves volumes.
+Startup does not build images or wait for service healthchecks.
 
-### Test Volume Overrides
+Rebuild images after changing dbt models/macros/tests or Spark code.
+DAG-only changes are mounted directly and do not require image rebuilding.
 
-To use separate test volumes, pass the lakehouse and Airflow override
-files, in that order:
-
-```bash
-python3 scripts/init_config.py --test-name fresh-test-v3
-
-bash scripts/start_services.sh \
-  infra/generated-test-volumes.yaml \
-  infra/airflow/generated-test-volumes.yaml
-
-bash scripts/stop_services.sh \
-  infra/generated-test-volumes.yaml \
-  infra/airflow/generated-test-volumes.yaml
-```
-
-These files must exist locally and define the intended test volumes.
-Choose unused volume names when testing from empty storage.
-
-The current environments share Compose project names and host ports.
-Run only one environment at a time. Separate volumes preserve data,
-but do not isolate running containers.
-
-The check, build, start, and stop scripts were exercised locally.
-Startup readiness is checked manually.
-
-## Validate dbt Configuration
-
-With dbt installed in the local Python environment:
-
-```bash
-cd dbt
-dbt parse --profiles-dir .
-```
-
-Parsing checks project configuration and references. It does not execute transformations or data tests.
-
-## Run the Pipeline
-
-With the services running, enable all three DAGs and trigger `instacart_bronze`:
+## Repository Layout
 
 ```text
-batch_id: 001
-run_silver: true
-run_gold: true
-refresh_catalog: false
+dags/       Pipeline orchestration
+spark/      Raw ingestion
+dbt/       Models, macros, and data tests
+infra/      Dockerfiles, Compose, and configuration examples
+scripts/    Configuration, lifecycle, and data preparation tools
 ```
 
-Wait for Bronze, Silver, and Gold to finish before processing the next batch.
+Secrets, datasets, logs, dbt outputs, and generated volume overrides are
+excluded from Git. Configuration examples are included.
 
-## Fresh-Clone Validation
+## Validation and Scope
 
-The layer-level build branch was tested from a fresh GitHub clone on the same macOS machine, using new MinIO, Nessie, and Airflow database volumes.
+The single-DAG rebuild has a user-reported successful batch `001` run.
+The numbered schema configuration was also reported to run successfully.
+Earlier three-DAG and bucket-based timings are historical and are not
+benchmarks for this architecture. Incremental processing and rerun
+behavior should be rechecked on the final clean-storage configuration.
 
-The reported runs completed successfully through all three layers with their selected tests.
-
-| Batch | Bronze | Silver | Gold | Sum of DAG durations |
-|---|---:|---:|---:|---:|
-| `001` | 1:30 | 0:47 | 0:35 | **2:52** |
-| `002` | 0:58 | 0:40 | 0:24 | **2:02** |
-| `003` | 1:00 | 0:41 | 0:23 | **2:04** |
-
-Batch `001` exercised initial table creation. Batches `002` and `003` exercised incremental processing with accumulated target data and catalog reuse.
-
-The totals above are sums of DAG durations, not independently measured end-to-end wall-clock times.
-
-Earlier bucket-based runs took longer in the recorded local measurements. Those runs had different environment and data states, so they are not controlled performance benchmarks.
-
-## Limitations
-
-- Setup on a separate machine has not yet been verified.
-- Successful local runs do not establish performance at larger scales.
-- Whole-batch merges may require more memory as data grows.
-- Layer-level tasks provide fewer Airflow retry checkpoints than bucket-level tasks.
-- No ML training or model deployment is implemented.
-
-This is a learning project, not a production deployment.
+Validation has been local to macOS. A separate-machine or Ubuntu run has
+not been verified. This is a learning project, not a production deployment.

@@ -9,7 +9,7 @@
     materialized='incremental',
     incremental_strategy='merge',
     unique_key=['order_id', 'product_id'],
-    schema='gold',
+    schema='03_dwh',
     views_enabled=false,
     on_schema_change='fail'
 ) }}
@@ -21,7 +21,7 @@ select
     reordered,
     'prior' as eval_set,
     _batch_id
-from {{ ref('stg_order_products_prior_incremental') }}
+from {{ ref('stg_order_products_prior') }}
 
 {% if is_incremental() %}
 where _batch_id = '{{ batch_id }}'
@@ -37,7 +37,7 @@ select
     reordered,
     'train' as eval_set,
     _batch_id
-from {{ ref('stg_order_products_train_incremental') }}
+from {{ ref('stg_order_products_train') }}
 
 {% if is_incremental() %}
 where _batch_id = '{{ batch_id }}'

@@ -8,11 +8,7 @@ models:
           - not_null
           - unique
 
-      - name: _catalog_version
-        data_tests:
-          - not_null
-
-  - name: fct_order_items_incremental
+  - name: fct_order_items
     columns:
       - name: order_id
         data_tests:
@@ -22,7 +18,7 @@ models:
         data_tests:
           - not_null
 
-  - name: fct_orders_incremental
+  - name: fct_orders
     columns:
       - name: order_id
         data_tests:

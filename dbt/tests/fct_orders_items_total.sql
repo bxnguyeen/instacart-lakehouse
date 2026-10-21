@@ -2,13 +2,13 @@ with expected as (
     select
         count(*) as items,
         sum(case when reordered = 1 then 1 else 0 end) as reordered_items
-    from {{ ref('fct_order_items_incremental') }}
+    from {{ ref('fct_order_items') }}
 ),
 actual as (
     select
         coalesce(sum(item_count), 0) as items,
         coalesce(sum(reordered_item_count), 0) as reordered_items
-    from {{ ref('fct_orders_incremental') }}
+    from {{ ref('fct_orders') }}
 )
 
 select

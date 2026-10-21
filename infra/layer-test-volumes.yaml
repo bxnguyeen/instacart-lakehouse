@@ -1,5 +1,0 @@
-volumes:
-  minio_data:
-    name: instacart-layer-test-minio-20261013
-  nessie_data:
-    name: instacart-layer-test-nessie-20261013

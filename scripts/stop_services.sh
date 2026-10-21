@@ -21,6 +21,19 @@ airflow=(
   -f infra/airflow/compose.yaml
 )
 
+if [[ $# -eq 0 ]]; then
+  lakehouse_override="infra/generated-test-volumes.yaml"
+  airflow_override="infra/airflow/generated-test-volumes.yaml"
+
+  if [[ -f "$lakehouse_override" && -f "$airflow_override" ]]; then
+    set -- "$lakehouse_override" "$airflow_override"
+    echo "Using generated volume overrides."
+  elif [[ -f "$lakehouse_override" || -f "$airflow_override" ]]; then
+    echo "ERROR: Both generated override files must exist." >&2
+    exit 1
+  fi
+fi
+
 if [[ $# -eq 2 ]]; then
   for file in "$1" "$2"; do
     if [[ ! -f "$file" ]]; then

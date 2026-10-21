@@ -1,24 +1,25 @@
 {{ config(
     materialized='incremental',
     incremental_strategy='merge',
-    unique_key=['order_id', 'product_id'],
-    schema='silver',
+    unique_key='order_id',
+    schema='02_stg',
     views_enabled=false,
     on_schema_change='fail'
 ) }}
 
-select 
+select
     cast(order_id as integer) as order_id,
-    cast(product_id as integer) as product_id,
-    cast(add_to_cart_order as integer) 
-        as add_to_cart_order,
-    cast(reordered as integer) 
-        as reordered,
-    _batch_id,
-    _manifest_id,
-    _source_file,
-    _ingested_at
-from {{ source('instacart', 'order_products_train_batches') }}
+    cast(user_id as integer) as user_id,
+    trim(eval_set) as eval_set,
+    cast(order_number as integer) as order_number,
+    cast(order_dow as integer) as order_dow,
+    cast(order_hour_of_day as integer) as order_hour_of_day,
+    cast(
+        nullif(trim(days_since_prior_order),'')
+        as decimal(12, 1)
+    ) as days_since_prior_order,
+    _batch_id
+from {{ source('instacart', 'orders') }}
 
 {% if is_incremental() %}
     {% set batch_id = var('batch_id', '') %}

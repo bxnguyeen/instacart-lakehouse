@@ -1,10 +1,10 @@
 with expected as (
     select count(*) as n
-    from {{ ref('stg_orders_incremental') }}
+    from {{ ref('stg_orders') }}
 ),
 actual as (
     select count(*) as n
-    from {{ ref('fct_orders_incremental') }}
+    from {{ ref('fct_orders') }}
 )
 
 select e.n as expected_rows, a.n as actual_rows

@@ -3,11 +3,13 @@ version: 2
 sources:
   - name: instacart
     database: iceberg
-    schema: bronze
+    schema: 01_raw
+    quoting:
+      schema: true
     tables:
       - name: aisles
       - name: departments
       - name: products
-      - name: orders_batches
-      - name: order_products_prior_batches
-      - name: order_products_train_batches
+      - name: orders
+      - name: order_products_prior
+      - name: order_products_train

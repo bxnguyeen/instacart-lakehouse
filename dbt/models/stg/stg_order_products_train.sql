@@ -1,0 +1,30 @@
+{{ config(
+    materialized='incremental',
+    incremental_strategy='merge',
+    unique_key=['order_id', 'product_id'],
+    schema='02_stg',
+    views_enabled=false,
+    on_schema_change='fail'
+) }}
+
+select 
+    cast(order_id as integer) as order_id,
+    cast(product_id as integer) as product_id,
+    cast(add_to_cart_order as integer) 
+        as add_to_cart_order,
+    cast(reordered as integer) 
+        as reordered,
+    _batch_id
+from {{ source('instacart', 'order_products_train') }}
+
+{% if is_incremental() %}
+    {% set batch_id = var('batch_id', '') %}
+
+    {% if batch_id not in ['001', '002', '003'] %}
+        {{ exceptions.raise_compiler_error(
+            "Provide batch_id as a string: 001, 002, or 003"
+        ) }} 
+    {% endif %}
+
+where _batch_id = '{{ batch_id }}'
+{% endif %}
