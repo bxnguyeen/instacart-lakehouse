@@ -1,6 +1,6 @@
 {{ config(
     materialized='table',
-    schema='gold'
+    schema='03_dwh'
 ) }}
 
 select
@@ -9,8 +9,7 @@ select
     p.aisle_id,
     a.aisle_name,
     p.department_id,
-    d.department,
-    p._catalog_version
+    d.department
 from {{ ref('stg_products') }} as p
 left join {{ ref('stg_aisles') }} as a
     on p.aisle_id = a.aisle_id

@@ -9,7 +9,7 @@
     materialized='incremental',
     incremental_strategy='merge',
     unique_key='order_id',
-    schema='gold',
+    schema='03_dwh',
     views_enabled=false,
     on_schema_change='fail'
 ) }}
@@ -24,7 +24,7 @@ with selected_orders as (
         order_hour_of_day,
         days_since_prior_order,
         _batch_id
-    from {{ ref('stg_orders_incremental') }}
+    from {{ ref('stg_orders') }}
 
     {% if is_incremental() %}
     where _batch_id = '{{ batch_id }}'
@@ -38,7 +38,7 @@ item_summary as (
         count(*) as item_count,
         sum(case when items.reordered = 1 then 1 else 0 end)
             as reordered_item_count
-    from {{ ref('fct_order_items_incremental') }} as items
+    from {{ ref('fct_order_items') }} as items
     inner join selected_orders as orders
         on items.order_id = orders.order_id
 

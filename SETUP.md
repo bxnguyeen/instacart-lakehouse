@@ -1,66 +1,58 @@
 # Local Setup
 
-These instructions describe setup from a fresh clone.
+Run commands from the repository root unless stated otherwise.
 
-The pipeline was validated after repository cleanup using a fresh clone
-and new MinIO, Nessie, and Airflow database volumes on the same macOS
-machine. Setup on a separate machine has not yet been verified.
+## 1. Prerequisites
 
-## Requirements
+Install Git, Python 3, Bash, and Docker with Compose. Ensure the Docker
+engine is running. Airflow, dbt, Spark, Trino, MinIO, Nessie, and PostgreSQL
+run in containers and do not need separate host installations.
 
-- Docker with Compose and a running Docker engine.
-- Python 3 for dataset preparation.
-- Git.
-- Sufficient memory and disk space for Spark, Trino, Airflow, and the dataset.
-
-The current configuration uses a Unix Docker socket. macOS with Docker
-Desktop and Linux are the intended environments. Native Windows setup
-has not been validated; use a Linux environment such as WSL2.
-
-Run all commands below from the repository root unless stated otherwise.
-
-## 1. Create local configuration
+The configuration assumes a Unix Docker socket. macOS is the locally
+tested environment; Ubuntu portability has not yet been verified.
 
 ```bash
-cp infra/airflow/.env.example infra/airflow/.env
-cp infra/dbt/profiles.example.yml infra/dbt/profiles.yml
-cp dbt/profiles.example.yml dbt/profiles.yml
-cp infra/trino/catalog/iceberg.properties.example infra/trino/catalog/iceberg.properties
-mkdir -p infra/airflow/config logs/airflow plugins data/instacart data/batches
+git clone https://github.com/bxnguyeen/instacart-lakehouse.git
+cd instacart-lakehouse
+docker info
 ```
 
-Edit `infra/airflow/.env`:
-
-- Keep `MINIO_ACCESS_KEY=lakehouse` to match the current Compose configuration.
-- Set `MINIO_SECRET_KEY` to a local password of at least eight characters.
-- Generate a new Fernet key and JWT secret for this installation.
-- Set a local Airflow username and password.
-- On Linux, set `AIRFLOW_UID` to the output of `id -u`.
-
-Generate the keys with Python's standard library:
+While the rebuild remains on a branch, select it before setup:
 
 ```bash
-python3 - <<'PY'
-import base64
-import secrets
-print('FERNET_KEY=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())
-print('AIRFLOW__API_AUTH__JWT_SECRET=' + secrets.token_hex(32))
-PY
+git switch refactor/single-dag-incremental
 ```
 
-Copy the generated values into `.env`. Do not commit or share them.
+This requires that branch to have been pushed. Omit the switch once the
+architecture is merged into the repository's default branch.
 
-Edit `infra/trino/catalog/iceberg.properties` and replace
-`REPLACE_WITH_MINIO_SECRET_KEY` with the same MinIO password.
+## 2. Initialize Configuration
 
-Do not replace keys or credentials in an existing installation as part
-of ordinary repository setup. These generation steps are for a fresh installation.
+```bash
+python3 scripts/init_config.py
+```
 
-## 2. Prepare the dataset
+The script generates missing local credentials and copies configuration
+examples. It preserves existing files and checks that MinIO credentials
+match between `.env` and the Trino Iceberg configuration.
 
-Obtain the Instacart Market Basket Analysis dataset from its original
-provider, following its access terms. Extract these files into
-`data/instacart/`:
+Local files include:
+
+- `infra/airflow/.env`
+- `infra/dbt/profiles.yml` for container dbt at `trino:8080`
+- `dbt/profiles.yml` for optional host dbt at `localhost:8081`
+- `infra/trino/catalog/iceberg.properties`
+
+Keep these files private. Airflow login credentials are in the local
+`.env`. Existing placeholder values must be completed manually. Do not
+regenerate credentials when resuming an existing environment.
+On Linux, verify `AIRFLOW_UID` matches `id -u`; new configuration generation
+sets it automatically.
+
+## 3. Prepare Source Data
+
+Obtain the Instacart dataset under its provider's access terms. Put these
+files in `data/instacart/`:
 
 ```text
 aisles.csv
@@ -71,148 +63,146 @@ order_products__prior.csv
 order_products__train.csv
 ```
 
-Prepare and validate batches:
-
 ```bash
 python3 scripts/prepare_batches.py
+# Optional verification of the prepared input:
 python3 scripts/validate_batches.py
 ```
 
-Batches `001`, `002`, and `003` simulate incremental arrivals using a
-deterministic split by order ID. They are not real daily source feeds.
-Do not run batch preparation concurrently with ingestion.
+Prepare files before triggering the DAG. Do not regenerate batches while
+ingestion is running. Existing unchanged, prepared batches can be reused.
 
-## 3. Validate configuration and build images
+## 4. Choose Storage
 
-```bash
-docker info
-docker compose --env-file infra/airflow/.env -f infra/compose.yaml config --quiet
-docker compose --env-file infra/airflow/.env -f infra/airflow/compose.yaml config --quiet
-docker build -f infra/Dockerfile.dbt -t instacart-dbt:local .
-docker build -f infra/Dockerfile.spark -t instacart-spark:local .
-docker compose --env-file infra/airflow/.env -f infra/compose.yaml build minio
-docker compose --env-file infra/airflow/.env -f infra/airflow/compose.yaml build
-```
-
-The dbt Dockerfile requires `infra/dbt/profiles.yml` before building.
-Container dbt connects to `trino:8080`; host dbt connects to `localhost:8081`.
-
-## 4. Start services
-
-Start the lakehouse first; this creates the external network Airflow uses:
+Without generated overrides, Compose uses its default named volumes.
+To choose separate test storage before starting services:
 
 ```bash
-docker compose --env-file infra/airflow/.env -f infra/compose.yaml up -d
+python3 scripts/init_config.py --test-name rebuild-v1
 ```
 
-Initialize Airflow and inspect the result before starting its services:
+This creates:
+
+```text
+infra/generated-test-volumes.yaml
+infra/airflow/generated-test-volumes.yaml
+```
+
+Start and stop scripts automatically use both files when present. If only
+one exists, they fail rather than mix storage configurations. Existing
+override files are preserved; a new `--test-name` does not replace them.
+Inspect the files to confirm the selected names.
+
+Before a fresh-storage test:
 
 ```bash
-docker compose --env-file infra/airflow/.env -f infra/airflow/compose.yaml up airflow-init
+docker volume ls --format '{{.Name}}' | grep '^instacart-rebuild-v1-'
 ```
 
-Continue only if `airflow-init` exits successfully:
+No matching names means those volumes do not yet exist. Matches mean the
+storage is not proven empty. For a different test name, stop the current
+environment first, preserve its volume names, remove only the two generated
+YAML files, and rerun initialization with an unused name. Removing YAML
+does not delete Docker data.
+
+Volumes accumulate disk usage. Fresh volumes are needed for clean-install
+tests, not for every code change. Do not delete MinIO files directly while
+retaining the corresponding catalog references.
+
+## 5. Check and Build
 
 ```bash
-docker compose --env-file infra/airflow/.env -f infra/airflow/compose.yaml up -d airflow-apiserver airflow-scheduler airflow-dag-processor airflow-triggerer
+bash scripts/check_setup.sh
+bash scripts/build_images.sh
 ```
 
-Inspect service state:
+The configuration check verifies required files, Docker availability, and
+Compose syntax. It does not verify dataset completeness or service readiness.
+Build stops on failure and uses available Docker cache.
+
+## 6. Start Services
 
 ```bash
-docker compose --env-file infra/airflow/.env -f infra/compose.yaml ps
-docker compose --env-file infra/airflow/.env -f infra/airflow/compose.yaml ps
+bash scripts/start_services.sh
+docker ps --format 'table {{.Names}}\t{{.Status}}'
 ```
 
-A successful image build does not prove service readiness. If initialization
-or startup fails, inspect service logs before triggering the pipeline.
-
-## 5. Run the pipeline
+The script starts the lakehouse, runs Airflow initialization, then starts
+Airflow services. Wait for services with healthchecks to report `healthy`.
+MinIO and Nessie may show only `Up`; this alone is not a readiness probe.
 
 - Airflow: http://localhost:8080
 - MinIO console: http://localhost:9001
 - Trino: http://localhost:8081
 
-Log into Airflow using the local credentials configured above.
-Trigger `instacart_bronze` with batch `001`, `run_silver=true`,
-`run_gold=true`, and `refresh_catalog=false`.
-
-Bronze passes the catalog version to Silver, and Silver passes it to Gold.
-Downstream DAGs run asynchronously: Bronze success does not prove Silver
-or Gold success. Inspect all three DAG runs and their tests.
-
-Process batch `002` and then `003` after the preceding downstream runs
-complete. Avoid overlapping runs across layers when changing catalogs.
-
-Catalog completion state is stored in MinIO under:
-
-```text
-landing/instacart/state/silver_catalog.json
-landing/instacart/state/gold_catalog.json
-```
-
-With the same completed catalog version, Silver and Gold validate existing
-tables and skip catalog rebuilding. Transaction tasks still execute.
-If validation fails, inspect the error and rerun with
-`refresh_catalog=true` when rebuilding is appropriate.
-
-## 6. Stop and resume
-
-Wait for active pipeline runs to finish before stopping services.
+All environments currently share Compose project names, host ports, and
+image tags. Run only one at a time. Separate volumes do not isolate running
+containers or images. Check mounts when switching between clone directories:
 
 ```bash
-docker compose --env-file infra/airflow/.env -f infra/airflow/compose.yaml stop
-docker compose --env-file infra/airflow/.env -f infra/compose.yaml stop
+docker inspect instacart-airflow-airflow-scheduler-1 \
+  --format '{{range .Mounts}}{{if eq .Destination "/opt/airflow/dags"}}{{.Source}}{{end}}{{end}}'
 ```
 
-These commands preserve data volumes. Resume with the lakehouse `up -d`
-command followed by the Airflow service `up -d` command from step 4.
-Airflow initialization is not required for every restart.
+It must point to the intended repository's `dags/` directory.
 
-## Validation Status
+## 7. Execute the Pipeline
 
-Batches 001, 002, and 003 completed successfully through Bronze,
-Silver, and Gold in the fresh-clone environment.
+Enable `instacart_pipeline` in Airflow. Trigger with `batch_id=001`.
+The DAG runs per-table tasks in `raw`, `stg`, and `dwh` groups plus the
+stage consistency checks. Do not trigger legacy DAGs if an older checkout
+still contains them.
 
-Catalog build and reuse paths were verified. Fresh-clone testing
-identified and resolved missing bucket initialization, missing
-forwarding of `run_gold`, and Docker command argument types.
+Wait for every task and test to succeed, then run `002` and `003` in order.
+Only `batch_id` is required; there are no `run_silver`, `run_gold`,
+`catalog_version`, or `refresh_catalog` parameters.
 
-Validation used separate test volumes on the same macOS machine.
-Setup on a separate machine has not yet been verified.
+Check tables through DBeaver using Trino at `localhost:8081`:
 
+```sql
+SHOW SCHEMAS FROM iceberg;
+SELECT count(*) FROM iceberg."03_dwh".fct_orders;
+SELECT count(*) FROM iceberg."03_dwh".fct_order_items;
+SELECT count(*) FROM iceberg."03_dwh".dim_products;
+```
 
-## Service Script Shortcuts
+Schemas are `01_raw`, `02_stg`, and `03_dwh`. Numbered identifiers need
+quoting in SQL. Old schemas do not disappear after editing code.
 
-From the repository root, use:
+To validate rerun behavior, record counts and business metrics, rerun the
+same batch, and compare them. Count equality alone is insufficient; inspect
+uniqueness and business tests as well.
+
+## 8. Stop and Resume
+
+Wait for active runs to finish:
 
 ```bash
-bash scripts/check_setup.sh
-bash scripts/build_images.sh
-bash scripts/start_services.sh
-# Wait for active DAG runs to finish before stopping services.
 bash scripts/stop_services.sh
 ```
 
-For the included test-volume configuration, pass both override files:
+This preserves data. Resume with `bash scripts/start_services.sh`, keeping
+the same local configuration and volume overrides. No rebuild is needed
+unless image contents changed.
+
+## Development Checks
+
+If dbt is installed in a host Python environment, parsing is optional:
 
 ```bash
-python3 scripts/init_config.py --test-name presentation-v1
-
-bash scripts/start_services.sh \
-  infra/generated-test-volumes.yaml \
-  infra/airflow/generated-test-volumes.yaml
-
-bash scripts/stop_services.sh \
-  infra/generated-test-volumes.yaml \
-  infra/airflow/generated-test-volumes.yaml
+cd dbt
+dbt parse --profiles-dir . --no-partial-parse
 ```
 
-Choose an unused test name for fresh storage. Existing generated
-override files are preserved; changing `--test-name` does not
-automatically replace them. Stop services after active DAG runs finish.
+Host dbt is not required to execute the pipeline. Parsing does not execute
+SQL or data tests. Rebuild the dbt image after SQL/YAML/macro/test changes,
+and the Spark image after loader changes. Editing the DAG does not require
+an image rebuild. Resetting volumes does not update images.
 
-Check that test volume names are unused before a fresh-storage test.
-Startup does not build images or wait for healthchecks. Verify readiness
-before triggering DAGs. Environments share container names and ports;
-run only one at a time.
+## Validation Status
+
+The user reported a successful batch `001` on the single-DAG rebuild and a
+successful run after numbered schema changes. Final clean-storage
+incremental and rerun checks remain separate checkpoints. Historical runs
+of the earlier architecture are not validation of this exact version.
+Separate-machine and Ubuntu setup have not yet been verified.

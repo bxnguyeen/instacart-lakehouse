@@ -9,7 +9,7 @@
     materialized='incremental',
     incremental_strategy='merge',
     unique_key=['order_id', 'product_id'],
-    schema='silver',
+    schema='02_stg',
     views_enabled=false,
     on_schema_change='fail'
 ) }}
@@ -19,11 +19,8 @@ select
     cast(product_id as integer) as product_id,
     cast(add_to_cart_order as integer) as add_to_cart_order,
     cast(reordered as integer) as reordered,
-    _batch_id,
-    _manifest_id,
-    _source_file,
-    _ingested_at
-from {{ source('instacart', 'order_products_prior_batches') }}
+    _batch_id
+from {{ source('instacart', 'order_products_prior') }}
 
 {% if is_incremental() %}
     {% set batch_id = var('batch_id', '') %}

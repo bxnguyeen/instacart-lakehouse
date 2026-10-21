@@ -1,5 +1,5 @@
 select *
-from {{ ref('fct_orders_incremental') }}
+from {{ ref('fct_orders') }}
 where
     (
         eval_set in ('prior', 'train')

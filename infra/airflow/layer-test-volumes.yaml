@@ -1,3 +1,0 @@
-volumes:
-  postgres-db-volume:
-    name: instacart-layer-test-airflow-20261013

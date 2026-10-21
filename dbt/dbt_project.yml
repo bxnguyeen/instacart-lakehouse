@@ -7,6 +7,9 @@ profile: instacart_lakehouse
 model-paths: ["models"]
 test-paths: ["tests"]
 
+quoting:
+  schema: true
+
 models:
   instacart_lakehouse:
     +materialized: table

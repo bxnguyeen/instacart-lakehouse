@@ -12,6 +12,5 @@ RUN python3 -m pip install --no-cache-dir \
 
 ENV PYTHONPATH="/opt/ingest-deps"
 
-COPY spark/load_bronze_batch.py /opt/jobs/load_bronze_batch.py
-COPY spark/load_catalog.py /opt/jobs/load_catalog.py
+COPY spark/load_raw.py /opt/jobs/load_raw.py
 USER spark

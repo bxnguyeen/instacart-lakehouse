@@ -1,16 +1,16 @@
 with expected as (
     select
         (select count(*)
-        from {{ ref('stg_order_products_prior_incremental') }})
+        from {{ ref('stg_order_products_prior') }})
         + 
         (select count(*)
-        from {{ ref('stg_order_products_train_incremental') }})
+        from {{ ref('stg_order_products_train') }})
         as row_count
 ),
 
 actual as (
     select count(*) as row_count
-    from {{ ref('fct_order_items_incremental') }}
+    from {{ ref('fct_order_items') }}
 )
 
 select 

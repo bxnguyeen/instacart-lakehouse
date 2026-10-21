@@ -12,18 +12,6 @@ models:
         data_tests:
           - not_null
 
-      - name: _catalog_version
-        data_tests:
-          - not_null
-
-      - name: _source_file
-        data_tests:
-          - not_null
-
-      - name: _ingested_at
-        data_tests:
-          - not_null
-
   - name: stg_departments
     columns:
       - name: department_id
@@ -32,18 +20,6 @@ models:
           - unique
 
       - name: department
-        data_tests:
-          - not_null
-
-      - name: _catalog_version
-        data_tests:
-          - not_null
-
-      - name: _source_file
-        data_tests:
-          - not_null
-
-      - name: _ingested_at
         data_tests:
           - not_null
 
@@ -69,21 +45,9 @@ models:
               arguments:
                 to: ref('stg_departments')
                 field: department_id
-      
-      - name: _catalog_version
-        data_tests:
-          - not_null
 
-      - name: _source_file
-        data_tests:
-          - not_null
-
-      - name: _ingested_at
-        data_tests:
-          - not_null
-
-  - name: stg_orders_incremental
-    description: "Current orders accumulated from Bronze batches."
+  - name: stg_orders
+    description: "Current orders accumulated from raw batches."
     columns:
       - name: order_id
         data_tests:
@@ -98,8 +62,8 @@ models:
         data_tests:
           - not_null
 
-  - name: stg_order_products_prior_incremental
-    description: "Current order products accumulated from Bronze batches."
+  - name: stg_order_products_prior
+    description: "Current order products accumulated from raw batches."
     columns:
       - name: order_id
         data_tests:
@@ -125,20 +89,8 @@ models:
         data_tests:
           - not_null
 
-      - name: _manifest_id
-        data_tests:
-          - not_null
-
-      - name: _source_file
-        data_tests:
-          - not_null
-
-      - name: _ingested_at
-        data_tests:
-          - not_null
-
-  - name: stg_order_products_train_incremental
-    description: "Current order products accumulated from Bronze batches."
+  - name: stg_order_products_train
+    description: "Current order products accumulated from raw batches."
     columns:
       - name: order_id
         data_tests:
@@ -161,17 +113,5 @@ models:
                 quote: false
 
       - name: _batch_id
-        data_tests:
-          - not_null
-
-      - name: _manifest_id
-        data_tests:
-          - not_null
-
-      - name: _source_file
-        data_tests:
-          - not_null
-
-      - name: _ingested_at
         data_tests:
           - not_null
